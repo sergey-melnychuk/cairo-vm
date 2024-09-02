@@ -1,6 +1,9 @@
+// use std::sync::{Arc, Mutex};
+use crate::stdlib::sync::{Arc, Mutex};
+
 use crate::air_private_input::{PrivateInput, PrivateInputSignature, SignatureInput};
 use crate::math_utils::div_mod;
-use crate::stdlib::{cell::RefCell, collections::HashMap, prelude::*, rc::Rc};
+use crate::stdlib::{collections::HashMap, prelude::*};
 
 use crate::types::builtin_name::BuiltinName;
 use crate::types::errors::math_errors::MathError;
@@ -38,7 +41,7 @@ pub struct SignatureBuiltinRunner {
     ratio: Option<u32>,
     base: usize,
     pub(crate) stop_ptr: Option<usize>,
-    signatures: Rc<RefCell<HashMap<Relocatable, Signature>>>,
+    signatures: Arc<Mutex<HashMap<Relocatable, Signature>>>,
 }
 
 impl SignatureBuiltinRunner {
@@ -48,7 +51,7 @@ impl SignatureBuiltinRunner {
             included,
             ratio,
             stop_ptr: None,
-            signatures: Rc::new(RefCell::new(HashMap::new())),
+            signatures: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -70,7 +73,7 @@ impl SignatureBuiltinRunner {
         };
 
         self.signatures
-            .borrow_mut()
+            .lock()
             .entry(relocatable)
             .or_insert(signature);
 
@@ -94,9 +97,17 @@ impl SignatureBuiltinRunner {
     pub fn base(&self) -> usize {
         self.base
     }
+
     pub fn add_validation_rule(&self, memory: &mut Memory) {
         let cells_per_instance = CELLS_PER_SIGNATURE;
-        let signatures = Rc::clone(&self.signatures);
+        let signatures_map = self.signatures.lock()
+            .iter()
+            // `Signature` is not `Copy` nor `Clone`, thus such workaround is necessary
+            .map(|(k, v)| (k.clone(), Signature {
+                r: v.r.clone(),
+                s: v.s.clone(),
+            }))
+            .collect::<HashMap<_, _>>();
         let rule: ValidationRule = ValidationRule(Box::new(
             move |memory: &Memory, addr: Relocatable| -> Result<Vec<Relocatable>, MemoryError> {
                 let cell_index = addr.offset % cells_per_instance as usize;
@@ -122,7 +133,6 @@ impl SignatureBuiltinRunner {
                     _ => return Err(MemoryError::MsgNonInt(Box::new(message_addr))),
                 };
 
-                let signatures_map = signatures.borrow();
                 let signature = signatures_map
                     .get(&pubkey_addr)
                     .ok_or_else(|| MemoryError::SignatureNotFound(Box::new(pubkey_addr)))?;
@@ -167,7 +177,7 @@ impl SignatureBuiltinRunner {
         // Convert signatures to Felt tuple
         let signatures: HashMap<Relocatable, (Felt252, Felt252)> = self
             .signatures
-            .borrow()
+            .lock()
             .iter()
             .map(|(k, v)| {
                 (
@@ -195,7 +205,7 @@ impl SignatureBuiltinRunner {
             if addr.segment_index != self.base as isize {
                 return Err(RunnerError::InvalidAdditionalData(BuiltinName::ecdsa));
             }
-            self.signatures.borrow_mut().insert(
+            self.signatures.lock().insert(
                 *addr,
                 Signature {
                     r: FieldElement::from_bytes_be(&r.to_bytes_be())
@@ -210,7 +220,7 @@ impl SignatureBuiltinRunner {
 
     pub fn air_private_input(&self, memory: &Memory) -> Vec<PrivateInput> {
         let mut private_inputs = vec![];
-        for (addr, signature) in self.signatures.borrow().iter() {
+        for (addr, signature) in self.signatures.lock().iter() {
             if let (Ok(pubkey), Some(msg)) = (
                 memory.get_integer(*addr),
                 (*addr + 1_usize)
@@ -518,7 +528,7 @@ mod tests {
                 s: FieldElement::from_dec_str("1239").unwrap(),
             },
         )]);
-        builtin.signatures = Rc::new(RefCell::new(signatures));
+        builtin.signatures = Arc::new(Mutex::new(signatures));
         let signatures = HashMap::from([(
             Relocatable::from((4, 0)),
             (felt_str!("45678"), felt_str!("1239")),
@@ -539,13 +549,13 @@ mod tests {
                 s: FieldElement::from_dec_str("1239").unwrap(),
             },
         )]);
-        builtin_a.signatures = Rc::new(RefCell::new(signatures));
+        builtin_a.signatures = Arc::new(Mutex::new(signatures));
         let additional_data = builtin_a.get_additional_data();
         let mut builtin_b = SignatureBuiltinRunner::new(Some(512), true);
         builtin_b.extend_additional_data(&additional_data).unwrap();
         // Signature doesn't implement PartialEq so we can't comapre the list of signatures directly
-        let signatures_a = builtin_a.signatures.borrow();
-        let signatures_b = builtin_b.signatures.borrow();
+        let signatures_a = builtin_a.signatures.lock();
+        let signatures_b = builtin_b.signatures.lock();
         assert_eq!(signatures_a.len(), signatures_b.len());
         for ((addr_a, signature_a), (addr_b, signature_b)) in
             signatures_a.iter().zip(signatures_b.iter())

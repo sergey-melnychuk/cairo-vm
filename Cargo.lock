@@ -919,6 +919,7 @@ dependencies = [
  "num-integer",
  "num-prime",
  "num-traits 0.2.19",
+ "parking_lot 0.12.3",
  "proptest",
  "rand",
  "rstest",

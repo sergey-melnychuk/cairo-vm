@@ -27,8 +27,12 @@ pub mod without_std {
     pub use alloc::boxed;
     pub use alloc::rc;
     pub use alloc::string;
-    pub use alloc::sync;
     pub use alloc::vec;
+
+    pub mod sync {
+        pub use alloc::sync::*;
+        pub use parking_lot::*;
+    }
 
     pub mod collections {
         pub use alloc::collections::BTreeMap;

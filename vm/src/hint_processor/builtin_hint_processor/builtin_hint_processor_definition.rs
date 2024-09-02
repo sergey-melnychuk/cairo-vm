@@ -1,3 +1,5 @@
+use crate::stdlib::sync::Arc;
+
 use super::{
     blake2s_utils::finalize_blake2s_v3,
     ec_recover::{
@@ -110,7 +112,7 @@ use crate::{
         hint_processor_definition::HintReference,
     },
     serde::deserialize_program::ApTracking,
-    stdlib::{any::Any, collections::HashMap, prelude::*, rc::Rc},
+    stdlib::{any::Any, collections::HashMap, prelude::*},
     types::exec_scope::ExecutionScopes,
     vm::{errors::hint_errors::HintError, vm_core::VirtualMachine},
 };
@@ -155,8 +157,9 @@ pub struct HintFunc(
             + Sync,
     >,
 );
+
 pub struct BuiltinHintProcessor {
-    pub extra_hints: HashMap<String, Rc<HintFunc>>,
+    pub extra_hints: HashMap<String, Arc<HintFunc>>,
     run_resources: RunResources,
 }
 impl BuiltinHintProcessor {
@@ -167,14 +170,14 @@ impl BuiltinHintProcessor {
         }
     }
 
-    pub fn new(extra_hints: HashMap<String, Rc<HintFunc>>, run_resources: RunResources) -> Self {
+    pub fn new(extra_hints: HashMap<String, Arc<HintFunc>>, run_resources: RunResources) -> Self {
         BuiltinHintProcessor {
             extra_hints,
             run_resources,
         }
     }
 
-    pub fn add_hint(&mut self, hint_code: String, hint_func: Rc<HintFunc>) {
+    pub fn add_hint(&mut self, hint_code: String, hint_func: Arc<HintFunc>) {
         self.extra_hints.insert(hint_code, hint_func);
     }
 }

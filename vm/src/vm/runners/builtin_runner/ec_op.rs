@@ -1,6 +1,6 @@
 use crate::air_private_input::{PrivateInput, PrivateInputEcOp};
 use crate::stdlib::prelude::*;
-use crate::stdlib::{cell::RefCell, collections::HashMap};
+use crate::stdlib::collections::HashMap;
 use crate::types::instance_definitions::ec_op_instance_def::{
     CELLS_PER_EC_OP, INPUT_CELLS_PER_EC_OP, SCALAR_HEIGHT,
 };
@@ -10,6 +10,8 @@ use crate::vm::errors::runner_errors::RunnerError;
 use crate::vm::vm_memory::memory::Memory;
 use crate::vm::vm_memory::memory_segments::MemorySegmentManager;
 use crate::Felt252;
+// use std::sync::{Arc, Mutex};
+use crate::stdlib::sync::{Arc, Mutex};
 use num_integer::{div_ceil, Integer};
 use starknet_types_core::curve::ProjectivePoint;
 
@@ -19,7 +21,7 @@ pub struct EcOpBuiltinRunner {
     pub base: usize,
     pub(crate) stop_ptr: Option<usize>,
     pub(crate) included: bool,
-    cache: RefCell<HashMap<Relocatable, Felt252>>,
+    cache: Arc<Mutex<HashMap<Relocatable, Felt252>>>,
 }
 
 impl EcOpBuiltinRunner {
@@ -29,7 +31,7 @@ impl EcOpBuiltinRunner {
             ratio,
             stop_ptr: None,
             included,
-            cache: RefCell::new(HashMap::new()),
+            cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
     ///Returns True if the point (x, y) is on the elliptic curve defined as
@@ -116,7 +118,7 @@ impl EcOpBuiltinRunner {
         let x_addr = (instance + (&Felt252::from(INPUT_CELLS_PER_EC_OP)))
             .map_err(|_| RunnerError::Memory(MemoryError::ExpectedInteger(Box::new(instance))))?;
 
-        if let Some(number) = self.cache.borrow().get(&address).cloned() {
+        if let Some(number) = self.cache.lock().get(&address).cloned() {
             return Ok(Some(MaybeRelocatable::Int(number)));
         }
 
@@ -165,8 +167,8 @@ impl EcOpBuiltinRunner {
             &input_cells[4],
             SCALAR_HEIGHT,
         )?;
-        self.cache.borrow_mut().insert(x_addr, result.0);
-        self.cache.borrow_mut().insert(
+        self.cache.lock().insert(x_addr, result.0);
+        self.cache.lock().insert(
             (x_addr + 1usize)
                 .map_err(|_| RunnerError::Memory(MemoryError::ExpectedInteger(Box::new(x_addr))))?,
             result.1,

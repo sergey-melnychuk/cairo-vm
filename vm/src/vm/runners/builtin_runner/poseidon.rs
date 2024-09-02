@@ -1,5 +1,5 @@
 use crate::air_private_input::{PrivateInput, PrivateInputPoseidonState};
-use crate::stdlib::{cell::RefCell, collections::HashMap, prelude::*};
+use crate::stdlib::{collections::HashMap, prelude::*};
 use crate::types::builtin_name::BuiltinName;
 use crate::types::instance_definitions::poseidon_instance_def::{
     CELLS_PER_POSEIDON, INPUT_CELLS_PER_POSEIDON,
@@ -10,6 +10,8 @@ use crate::vm::errors::runner_errors::RunnerError;
 use crate::vm::vm_memory::memory::Memory;
 use crate::vm::vm_memory::memory_segments::MemorySegmentManager;
 use crate::Felt252;
+// use std::sync::{Arc, Mutex};
+use crate::stdlib::sync::{Arc, Mutex};
 use num_integer::div_ceil;
 use starknet_types_core::hash::Poseidon;
 
@@ -19,7 +21,7 @@ pub struct PoseidonBuiltinRunner {
     ratio: Option<u32>,
     pub(crate) stop_ptr: Option<usize>,
     pub(crate) included: bool,
-    cache: RefCell<HashMap<Relocatable, Felt252>>,
+    cache: Arc<Mutex<HashMap<Relocatable, Felt252>>>,
 }
 
 impl PoseidonBuiltinRunner {
@@ -29,7 +31,7 @@ impl PoseidonBuiltinRunner {
             ratio,
             stop_ptr: None,
             included,
-            cache: RefCell::new(HashMap::new()),
+            cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -64,7 +66,7 @@ impl PoseidonBuiltinRunner {
         if index < INPUT_CELLS_PER_POSEIDON as usize {
             return Ok(None);
         }
-        if let Some(felt) = self.cache.borrow().get(&address) {
+        if let Some(felt) = self.cache.lock().get(&address) {
             return Ok(Some(felt.into()));
         }
         let first_input_addr = (address - index)?;
@@ -90,11 +92,11 @@ impl PoseidonBuiltinRunner {
         Poseidon::hades_permutation(&mut poseidon_state);
         for (i, elem) in poseidon_state.iter().enumerate() {
             self.cache
-                .borrow_mut()
+                .lock()
                 .insert((first_output_addr + i)?, *elem);
         }
 
-        Ok(self.cache.borrow().get(&address).map(|x| x.into()))
+        Ok(self.cache.lock().get(&address).map(|x| x.into()))
     }
 
     pub fn get_used_cells(&self, segments: &MemorySegmentManager) -> Result<usize, MemoryError> {

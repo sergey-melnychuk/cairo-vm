@@ -8,6 +8,7 @@ use crate::{
         runners::{cairo_pie::CairoPie, cairo_runner::CairoRunner},
         security::verify_secure_runner,
     },
+    stdlib::prelude::*,
 };
 
 use crate::Felt252;
@@ -20,9 +21,8 @@ use crate::types::exec_scope::ExecutionScopes;
 use arbitrary::{self, Arbitrary};
 
 #[cfg_attr(feature = "test_utils", derive(Arbitrary))]
-pub struct CairoRunConfig<'a> {
-    #[cfg_attr(feature = "test_utils", arbitrary(value = "main"))]
-    pub entrypoint: &'a str,
+pub struct CairoRunConfig {
+    pub entrypoint: String,
     pub trace_enabled: bool,
     pub relocate_mem: bool,
     pub layout: LayoutName,
@@ -32,10 +32,10 @@ pub struct CairoRunConfig<'a> {
     pub allow_missing_builtins: Option<bool>,
 }
 
-impl<'a> Default for CairoRunConfig<'a> {
+impl Default for CairoRunConfig {
     fn default() -> Self {
         CairoRunConfig {
-            entrypoint: "main",
+            entrypoint: "main".to_owned(),
             trace_enabled: false,
             relocate_mem: false,
             layout: LayoutName::plain,
@@ -118,7 +118,7 @@ pub fn cairo_run(
     cairo_run_config: &CairoRunConfig,
     hint_processor: &mut dyn HintProcessor,
 ) -> Result<CairoRunner, CairoRunError> {
-    let program = Program::from_bytes(program_content, Some(cairo_run_config.entrypoint))?;
+    let program = Program::from_bytes(program_content, Some(&cairo_run_config.entrypoint))?;
 
     cairo_run_program(&program, cairo_run_config, hint_processor)
 }

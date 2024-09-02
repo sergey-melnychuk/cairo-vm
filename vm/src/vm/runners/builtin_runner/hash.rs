@@ -1,5 +1,5 @@
 use crate::air_private_input::{PrivateInput, PrivateInputPair};
-use crate::stdlib::{cell::RefCell, prelude::*};
+use crate::stdlib::prelude::*;
 use crate::types::builtin_name::BuiltinName;
 use crate::types::instance_definitions::pedersen_instance_def::CELLS_PER_HASH;
 use crate::types::relocatable::{MaybeRelocatable, Relocatable};
@@ -8,6 +8,8 @@ use crate::vm::errors::runner_errors::RunnerError;
 use crate::vm::runners::cairo_pie::BuiltinAdditionalData;
 use crate::vm::vm_memory::memory::Memory;
 use crate::vm::vm_memory::memory_segments::MemorySegmentManager;
+// use std::sync::{Arc, Mutex};
+use crate::stdlib::sync::{Arc, Mutex};
 use num_integer::{div_ceil, Integer};
 use starknet_types_core::hash::StarkHash;
 
@@ -21,7 +23,7 @@ pub struct HashBuiltinRunner {
     // Therefore need interior mutability
     // 1 at position 'n' means offset 'n' relative to base pointer
     // has been verified
-    pub(self) verified_addresses: RefCell<Vec<bool>>,
+    pub(self) verified_addresses: Arc<Mutex<Vec<bool>>>, // TODO: UNFUCK THIS
 }
 
 impl HashBuiltinRunner {
@@ -30,7 +32,7 @@ impl HashBuiltinRunner {
             base: 0,
             ratio,
             stop_ptr: None,
-            verified_addresses: RefCell::new(Vec::new()),
+            verified_addresses: Arc::new(Mutex::new(Vec::new())),
             included,
         }
     }
@@ -63,7 +65,7 @@ impl HashBuiltinRunner {
         if address.offset.mod_floor(&(CELLS_PER_HASH as usize)) != 2
             || *self
                 .verified_addresses
-                .borrow()
+                .lock()
                 .get(address.offset)
                 .unwrap_or(&false)
         {
@@ -82,12 +84,12 @@ impl HashBuiltinRunner {
             num_a.as_ref().map(|x| x.as_ref()),
             num_b.as_ref().map(|x| x.as_ref()),
         ) {
-            if self.verified_addresses.borrow().len() <= address.offset {
+            if self.verified_addresses.lock().len() <= address.offset {
                 self.verified_addresses
-                    .borrow_mut()
+                    .lock()
                     .resize(address.offset + 1, false);
             }
-            self.verified_addresses.borrow_mut()[address.offset] = true;
+            self.verified_addresses.lock()[address.offset] = true;
             //Compute pedersen Hash
             let result = starknet_types_core::hash::Pedersen::hash(num_b, num_a);
             return Ok(Some(MaybeRelocatable::from(result)));
@@ -111,7 +113,7 @@ impl HashBuiltinRunner {
 
     pub fn get_additional_data(&self) -> BuiltinAdditionalData {
         let mut verified_addresses = Vec::new();
-        for (offset, is_verified) in self.verified_addresses.borrow().iter().enumerate() {
+        for (offset, is_verified) in self.verified_addresses.lock().iter().enumerate() {
             if *is_verified {
                 verified_addresses.push(Relocatable::from((self.base as isize, offset)));
             }
@@ -128,7 +130,7 @@ impl HashBuiltinRunner {
             BuiltinAdditionalData::Empty(_) => return Ok(()),
             _ => return Err(RunnerError::InvalidAdditionalData(BuiltinName::pedersen)),
         };
-        let mut verified_addresses = self.verified_addresses.borrow_mut();
+        let mut verified_addresses = self.verified_addresses.lock();
         for addr in additional_data {
             if addr.segment_index != self.base as isize {
                 return Err(RunnerError::InvalidAdditionalData(BuiltinName::pedersen));

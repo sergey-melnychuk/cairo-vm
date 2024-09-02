@@ -1,6 +1,6 @@
 use crate::air_private_input::{PrivateInput, PrivateInputKeccakState};
 use crate::math_utils::safe_div_usize;
-use crate::stdlib::{cell::RefCell, collections::HashMap, prelude::*};
+use crate::stdlib::{collections::HashMap, prelude::*};
 use crate::types::builtin_name::BuiltinName;
 use crate::types::instance_definitions::keccak_instance_def::{
     CELLS_PER_KECCAK, INPUT_CELLS_PER_KECCAK,
@@ -11,6 +11,8 @@ use crate::vm::errors::runner_errors::RunnerError;
 use crate::vm::vm_memory::memory::Memory;
 use crate::vm::vm_memory::memory_segments::MemorySegmentManager;
 use crate::Felt252;
+// use std::sync::{Arc, Mutex};
+use crate::stdlib::sync::{Arc, Mutex};
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 use num_integer::div_ceil;
@@ -27,7 +29,7 @@ pub struct KeccakBuiltinRunner {
     pub base: usize,
     pub(crate) stop_ptr: Option<usize>,
     pub(crate) included: bool,
-    cache: RefCell<HashMap<Relocatable, Felt252>>,
+    cache: Arc<Mutex<HashMap<Relocatable, Felt252>>>,
 }
 
 impl KeccakBuiltinRunner {
@@ -37,7 +39,7 @@ impl KeccakBuiltinRunner {
             ratio,
             stop_ptr: None,
             included,
-            cache: RefCell::new(HashMap::new()),
+            cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -70,7 +72,7 @@ impl KeccakBuiltinRunner {
         if index < INPUT_CELLS_PER_KECCAK as usize {
             return Ok(None);
         }
-        if let Some(felt) = self.cache.borrow().get(&address) {
+        if let Some(felt) = self.cache.lock().get(&address) {
             return Ok(Some(felt.into()));
         }
         let first_input_addr = (address - index)?;
@@ -114,14 +116,14 @@ impl KeccakBuiltinRunner {
         let mut start_index = 0_usize;
         for i in 0..INPUT_CELLS_PER_KECCAK {
             let end_index = start_index + BITS as usize / 8;
-            self.cache.borrow_mut().insert((first_output_addr + i)?, {
+            self.cache.lock().insert((first_output_addr + i)?, {
                 let mut bytes = keccak_result[start_index..end_index].to_vec();
                 bytes.resize(32, 0);
                 Felt252::from_bytes_le_slice(&bytes)
             });
             start_index = end_index;
         }
-        Ok(self.cache.borrow().get(&address).map(|x| x.into()))
+        Ok(self.cache.lock().get(&address).map(|x| x.into()))
     }
 
     pub fn get_used_cells(&self, segments: &MemorySegmentManager) -> Result<usize, MemoryError> {
