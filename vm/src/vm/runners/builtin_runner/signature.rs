@@ -73,7 +73,8 @@ impl SignatureBuiltinRunner {
         };
 
         self.signatures
-            .lock()
+            .try_lock()
+            .unwrap()
             .entry(relocatable)
             .or_insert(signature);
 
@@ -100,13 +101,21 @@ impl SignatureBuiltinRunner {
 
     pub fn add_validation_rule(&self, memory: &mut Memory) {
         let cells_per_instance = CELLS_PER_SIGNATURE;
-        let signatures_map = self.signatures.lock()
+        let signatures_map = self
+            .signatures
+            .try_lock()
+            .unwrap()
             .iter()
             // `Signature` is not `Copy` nor `Clone`, thus such workaround is necessary
-            .map(|(k, v)| (k.clone(), Signature {
-                r: v.r.clone(),
-                s: v.s.clone(),
-            }))
+            .map(|(k, v)| {
+                (
+                    k.clone(),
+                    Signature {
+                        r: v.r.clone(),
+                        s: v.s.clone(),
+                    },
+                )
+            })
             .collect::<HashMap<_, _>>();
         let rule: ValidationRule = ValidationRule(Box::new(
             move |memory: &Memory, addr: Relocatable| -> Result<Vec<Relocatable>, MemoryError> {
@@ -177,7 +186,8 @@ impl SignatureBuiltinRunner {
         // Convert signatures to Felt tuple
         let signatures: HashMap<Relocatable, (Felt252, Felt252)> = self
             .signatures
-            .lock()
+            .try_lock()
+            .unwrap()
             .iter()
             .map(|(k, v)| {
                 (
@@ -205,7 +215,7 @@ impl SignatureBuiltinRunner {
             if addr.segment_index != self.base as isize {
                 return Err(RunnerError::InvalidAdditionalData(BuiltinName::ecdsa));
             }
-            self.signatures.lock().insert(
+            self.signatures.try_lock().unwrap().insert(
                 *addr,
                 Signature {
                     r: FieldElement::from_bytes_be(&r.to_bytes_be())
@@ -220,7 +230,7 @@ impl SignatureBuiltinRunner {
 
     pub fn air_private_input(&self, memory: &Memory) -> Vec<PrivateInput> {
         let mut private_inputs = vec![];
-        for (addr, signature) in self.signatures.lock().iter() {
+        for (addr, signature) in self.signatures.try_lock().unwrap().iter() {
             if let (Ok(pubkey), Some(msg)) = (
                 memory.get_integer(*addr),
                 (*addr + 1_usize)
@@ -554,8 +564,8 @@ mod tests {
         let mut builtin_b = SignatureBuiltinRunner::new(Some(512), true);
         builtin_b.extend_additional_data(&additional_data).unwrap();
         // Signature doesn't implement PartialEq so we can't comapre the list of signatures directly
-        let signatures_a = builtin_a.signatures.lock();
-        let signatures_b = builtin_b.signatures.lock();
+        let signatures_a = builtin_a.signatures.try_lock().unwrap();
+        let signatures_b = builtin_b.signatures.try_lock().unwrap();
         assert_eq!(signatures_a.len(), signatures_b.len());
         for ((addr_a, signature_a), (addr_b, signature_b)) in
             signatures_a.iter().zip(signatures_b.iter())

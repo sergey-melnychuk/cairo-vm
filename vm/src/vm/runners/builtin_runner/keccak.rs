@@ -72,7 +72,7 @@ impl KeccakBuiltinRunner {
         if index < INPUT_CELLS_PER_KECCAK as usize {
             return Ok(None);
         }
-        if let Some(felt) = self.cache.lock().get(&address) {
+        if let Some(felt) = self.cache.try_lock().unwrap().get(&address) {
             return Ok(Some(felt.into()));
         }
         let first_input_addr = (address - index)?;
@@ -116,14 +116,22 @@ impl KeccakBuiltinRunner {
         let mut start_index = 0_usize;
         for i in 0..INPUT_CELLS_PER_KECCAK {
             let end_index = start_index + BITS as usize / 8;
-            self.cache.lock().insert((first_output_addr + i)?, {
-                let mut bytes = keccak_result[start_index..end_index].to_vec();
-                bytes.resize(32, 0);
-                Felt252::from_bytes_le_slice(&bytes)
-            });
+            self.cache
+                .try_lock()
+                .unwrap()
+                .insert((first_output_addr + i)?, {
+                    let mut bytes = keccak_result[start_index..end_index].to_vec();
+                    bytes.resize(32, 0);
+                    Felt252::from_bytes_le_slice(&bytes)
+                });
             start_index = end_index;
         }
-        Ok(self.cache.lock().get(&address).map(|x| x.into()))
+        Ok(self
+            .cache
+            .try_lock()
+            .unwrap()
+            .get(&address)
+            .map(|x| x.into()))
     }
 
     pub fn get_used_cells(&self, segments: &MemorySegmentManager) -> Result<usize, MemoryError> {

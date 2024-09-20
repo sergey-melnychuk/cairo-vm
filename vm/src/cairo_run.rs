@@ -1,5 +1,6 @@
 use crate::{
     hint_processor::hint_processor_definition::HintProcessor,
+    stdlib::prelude::*,
     types::{builtin_name::BuiltinName, layout_name::LayoutName, program::Program},
     vm::{
         errors::{
@@ -8,7 +9,6 @@ use crate::{
         runners::{cairo_pie::CairoPie, cairo_runner::CairoRunner},
         security::verify_secure_runner,
     },
-    stdlib::prelude::*,
 };
 
 use crate::Felt252;

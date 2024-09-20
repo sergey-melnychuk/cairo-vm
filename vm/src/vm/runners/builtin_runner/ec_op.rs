@@ -1,6 +1,6 @@
 use crate::air_private_input::{PrivateInput, PrivateInputEcOp};
-use crate::stdlib::prelude::*;
 use crate::stdlib::collections::HashMap;
+use crate::stdlib::prelude::*;
 use crate::types::instance_definitions::ec_op_instance_def::{
     CELLS_PER_EC_OP, INPUT_CELLS_PER_EC_OP, SCALAR_HEIGHT,
 };
@@ -118,7 +118,7 @@ impl EcOpBuiltinRunner {
         let x_addr = (instance + (&Felt252::from(INPUT_CELLS_PER_EC_OP)))
             .map_err(|_| RunnerError::Memory(MemoryError::ExpectedInteger(Box::new(instance))))?;
 
-        if let Some(number) = self.cache.lock().get(&address).cloned() {
+        if let Some(number) = self.cache.try_lock().unwrap().get(&address).cloned() {
             return Ok(Some(MaybeRelocatable::Int(number)));
         }
 
@@ -167,8 +167,8 @@ impl EcOpBuiltinRunner {
             &input_cells[4],
             SCALAR_HEIGHT,
         )?;
-        self.cache.lock().insert(x_addr, result.0);
-        self.cache.lock().insert(
+        self.cache.try_lock().unwrap().insert(x_addr, result.0);
+        self.cache.try_lock().unwrap().insert(
             (x_addr + 1usize)
                 .map_err(|_| RunnerError::Memory(MemoryError::ExpectedInteger(Box::new(x_addr))))?,
             result.1,

@@ -65,7 +65,8 @@ impl HashBuiltinRunner {
         if address.offset.mod_floor(&(CELLS_PER_HASH as usize)) != 2
             || *self
                 .verified_addresses
-                .lock()
+                .try_lock()
+                .unwrap()
                 .get(address.offset)
                 .unwrap_or(&false)
         {
@@ -84,12 +85,13 @@ impl HashBuiltinRunner {
             num_a.as_ref().map(|x| x.as_ref()),
             num_b.as_ref().map(|x| x.as_ref()),
         ) {
-            if self.verified_addresses.lock().len() <= address.offset {
+            if self.verified_addresses.try_lock().unwrap().len() <= address.offset {
                 self.verified_addresses
-                    .lock()
+                    .try_lock()
+                    .unwrap()
                     .resize(address.offset + 1, false);
             }
-            self.verified_addresses.lock()[address.offset] = true;
+            self.verified_addresses.try_lock().unwrap()[address.offset] = true;
             //Compute pedersen Hash
             let result = starknet_types_core::hash::Pedersen::hash(num_b, num_a);
             return Ok(Some(MaybeRelocatable::from(result)));
@@ -113,7 +115,13 @@ impl HashBuiltinRunner {
 
     pub fn get_additional_data(&self) -> BuiltinAdditionalData {
         let mut verified_addresses = Vec::new();
-        for (offset, is_verified) in self.verified_addresses.lock().iter().enumerate() {
+        for (offset, is_verified) in self
+            .verified_addresses
+            .try_lock()
+            .unwrap()
+            .iter()
+            .enumerate()
+        {
             if *is_verified {
                 verified_addresses.push(Relocatable::from((self.base as isize, offset)));
             }
@@ -130,7 +138,7 @@ impl HashBuiltinRunner {
             BuiltinAdditionalData::Empty(_) => return Ok(()),
             _ => return Err(RunnerError::InvalidAdditionalData(BuiltinName::pedersen)),
         };
-        let mut verified_addresses = self.verified_addresses.lock();
+        let mut verified_addresses = self.verified_addresses.try_lock().unwrap();
         for addr in additional_data {
             if addr.segment_index != self.base as isize {
                 return Err(RunnerError::InvalidAdditionalData(BuiltinName::pedersen));

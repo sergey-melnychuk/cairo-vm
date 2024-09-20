@@ -66,7 +66,7 @@ impl PoseidonBuiltinRunner {
         if index < INPUT_CELLS_PER_POSEIDON as usize {
             return Ok(None);
         }
-        if let Some(felt) = self.cache.lock().get(&address) {
+        if let Some(felt) = self.cache.try_lock().unwrap().get(&address) {
             return Ok(Some(felt.into()));
         }
         let first_input_addr = (address - index)?;
@@ -92,11 +92,17 @@ impl PoseidonBuiltinRunner {
         Poseidon::hades_permutation(&mut poseidon_state);
         for (i, elem) in poseidon_state.iter().enumerate() {
             self.cache
-                .lock()
+                .try_lock()
+                .unwrap()
                 .insert((first_output_addr + i)?, *elem);
         }
 
-        Ok(self.cache.lock().get(&address).map(|x| x.into()))
+        Ok(self
+            .cache
+            .try_lock()
+            .unwrap()
+            .get(&address)
+            .map(|x| x.into()))
     }
 
     pub fn get_used_cells(&self, segments: &MemorySegmentManager) -> Result<usize, MemoryError> {
